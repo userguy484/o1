@@ -6,7 +6,44 @@ local LocalPlayer = Players.LocalPlayer
 
 local DISCORD_LINK = "https://discord.gg/JyvrQS6p8"
 local CORRECT_KEY = "121xxda21"
-local REAL_LOADSTRING = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/userguy484/VesoHub./refs/heads/main/ppl"))()'
+local REAL_URL = "https://raw.githubusercontent.com/userguy484/VesoHub./refs/heads/main/ppl"
+
+-- ==========================================
+-- SAFE HTTP FETCH (NO MORE NIL)
+-- ==========================================
+local function SafeFetch(url)
+    -- Try standard executor httpget
+    if game.HttpGet then
+        local ok, res = pcall(game.HttpGet, game, url)
+        if ok and res then return res end
+    end
+    -- Try lowercase httpget
+    if httpget then
+        local ok, res = pcall(httpget, url)
+        if ok and res then return res end
+    end
+    -- Try game:HttpGetAsync
+    if game.HttpGetAsync then
+        local ok, res = pcall(game.HttpGetAsync, game, url)
+        if ok and res then return res end
+    end
+    -- Try request table
+    if request then
+        local ok, res = pcall(request, {Url = url, Method = "GET"})
+        if ok and res and res.Body then return res.Body end
+    end
+    -- Try syn.request
+    if syn and syn.request then
+        local ok, res = pcall(syn.request, {Url = url, Method = "GET"})
+        if ok and res and res.Body then return res.Body end
+    end
+    -- Try http_request
+    if http_request then
+        local ok, res = pcall(http_request, {Url = url, Method = "GET"})
+        if ok and res and res.Body then return res.Body end
+    end
+    return nil
+end
 
 -- ==========================================
 -- SAFE GUI PARENT
@@ -35,7 +72,6 @@ ScreenGui.IgnoreGuiInset = true
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = guiParent
 
--- State guard so callbacks can't double-fire after teardown
 local closed = false
 
 -- ==========================================
@@ -196,7 +232,6 @@ TweenService:Create(MainFrame, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.Ea
     Position = UDim2.new(0.5, -200, 0.5, -120)
 }):Play()
 
--- Dragging
 local dragging, dragStart, startPos
 TitleBar.InputBegan:Connect(function(input)
     if closed then return end
@@ -219,7 +254,6 @@ UserInputService.InputEnded:Connect(function(input)
     end
 end)
 
--- Close animation helper
 local function CloseUI()
     if closed then return end
     closed = true
@@ -233,7 +267,6 @@ local function CloseUI()
     end)
 end
 
--- Copy Discord Action (with toclipboard fallback)
 CopyBtn.MouseButton1Click:Connect(function()
     local copied = false
     if setclipboard then
@@ -268,15 +301,26 @@ VerifyBtn.MouseButton1Click:Connect(function()
             if ScreenGui then ScreenGui:Destroy() end
 
             if not loadstring then
-                warn("PaintHub: loadstring unavailable in this executor")
+                ShowBadge("Executor missing loadstring", false)
                 return
             end
-            local func, err = loadstring(REAL_LOADSTRING)
+
+            -- Fetch the script text first safely
+            local scriptText = SafeFetch(REAL_URL)
+            if not scriptText then
+                warn("PaintHub: Failed to fetch script from URL. HttpGet nil or blocked.")
+                return
+            end
+
+            -- Now load and execute it safely
+            local func, err = loadstring(scriptText)
             if func then
                 local ok, runErr = pcall(func)
-                if not ok then warn("PaintHub runtime: " .. tostring(runErr)) end
+                if not ok then 
+                    warn("PaintHub runtime error: " .. tostring(runErr)) 
+                end
             else
-                warn("PaintHub load failed: " .. tostring(err))
+                warn("PaintHub syntax error in fetched script: " .. tostring(err))
             end
         end)
     else
@@ -285,5 +329,4 @@ VerifyBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- Close Action
 CloseBtn.MouseButton1Click:Connect(CloseUI)
